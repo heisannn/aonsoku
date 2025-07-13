@@ -34,9 +34,9 @@ export function PlayerProgress({ audioRef }: PlayerProgressProps) {
   const { currentSong, currentList, podcastList, currentSongIndex } =
     usePlayerSonglist()
   const { isSong, isPodcast } = usePlayerMediaType()
-  const { 
-    setProgress, 
-    setUpdatePodcastProgress, 
+  const {
+    setProgress,
+    setUpdatePodcastProgress,
     getCurrentPodcastProgress,
     handleScrobbleOnPause,
     handleScrobbleOnResume,
@@ -46,11 +46,13 @@ export function PlayerProgress({ audioRef }: PlayerProgressProps) {
   const isEmpty = isSong && currentList.length === 0
   const previousSongRef = useRef(currentSong)
   const wasPlayingRef = useRef(isPlaying)
-  
+
   // Track song changes
   useEffect(() => {
     if (currentSong.id !== previousSongRef.current.id) {
-      const previousSong = previousSongRef.current.id ? previousSongRef.current : undefined
+      const previousSong = previousSongRef.current.id
+        ? previousSongRef.current
+        : undefined
       handleScrobbleOnSongChange(previousSong)
       previousSongRef.current = currentSong
     }

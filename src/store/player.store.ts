@@ -402,13 +402,14 @@ export const usePlayerStore = createWithEqualityFn<IPlayerContext>()(
             },
             setPlayingState: (status) => {
               const { isPlaying } = get().playerState
-              const { handleScrobbleOnPause, handleScrobbleOnResume } = get().actions
-              
+              const { handleScrobbleOnPause, handleScrobbleOnResume } =
+                get().actions
+
               if (isPlaying !== status) {
                 set((state) => {
                   state.playerState.isPlaying = status
                 })
-                
+
                 // Trigger scrobble logic based on state change
                 if (status) {
                   handleScrobbleOnResume()
@@ -423,12 +424,13 @@ export const usePlayerStore = createWithEqualityFn<IPlayerContext>()(
             },
             togglePlayPause: () => {
               const { isPlaying } = get().playerState
-              const { handleScrobbleOnPause, handleScrobbleOnResume } = get().actions
-              
+              const { handleScrobbleOnPause, handleScrobbleOnResume } =
+                get().actions
+
               set((state) => {
                 state.playerState.isPlaying = !state.playerState.isPlaying
               })
-              
+
               // Trigger scrobble logic based on new state
               if (isPlaying) {
                 handleScrobbleOnPause()
@@ -483,8 +485,12 @@ export const usePlayerStore = createWithEqualityFn<IPlayerContext>()(
             },
             playNextSong: () => {
               const { loopState } = get().playerState
-              const { hasNextSong, resetProgress, playFirstSongInQueue, handleScrobbleOnSongChange } =
-                get().actions
+              const {
+                hasNextSong,
+                resetProgress,
+                playFirstSongInQueue,
+                handleScrobbleOnSongChange,
+              } = get().actions
               const { currentSong } = get().songlist
 
               if (hasNextSong()) {
@@ -506,7 +512,8 @@ export const usePlayerStore = createWithEqualityFn<IPlayerContext>()(
             playPrevSong: () => {
               if (get().actions.hasPrevSong()) {
                 const { currentSong } = get().songlist
-                const { resetProgress, handleScrobbleOnSongChange } = get().actions
+                const { resetProgress, handleScrobbleOnSongChange } =
+                  get().actions
                 const previousSong = currentSong
                 resetProgress()
                 set((state) => {
@@ -863,7 +870,10 @@ export const usePlayerStore = createWithEqualityFn<IPlayerContext>()(
                 progressTime >= scrobbleDuration
               )
             },
-            sendScrobbleEvent: async (songId: string, isSubmission: boolean) => {
+            sendScrobbleEvent: async (
+              songId: string,
+              isSubmission: boolean,
+            ) => {
               try {
                 await subsonic.scrobble.send(songId, isSubmission)
               } catch (error) {
@@ -883,7 +893,7 @@ export const usePlayerStore = createWithEqualityFn<IPlayerContext>()(
             handleScrobbleOnSongChange: async (previousSong?: ISong) => {
               const { currentSong } = get().songlist
               const { mediaType } = get().playerState
-              const { 
+              const {
                 checkScrobbleConditions,
                 sendScrobbleEvent,
                 resetScrobbleState,
