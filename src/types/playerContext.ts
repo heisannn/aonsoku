@@ -41,6 +41,12 @@ export interface IPlayerProgress {
   progress: number
 }
 
+export interface IScrobbleState {
+  isCurrentSongScrobbled: boolean
+  scrobblePercentage: number
+  scrobbleDuration: number
+}
+
 export interface IVolumeSettings {
   min: number
   max: number
@@ -175,12 +181,21 @@ export interface IPlayerActions {
   setUseSongColorOnQueue: (value: boolean) => void
   setUseSongColorOnBigPlayer: (value: boolean) => void
   setBigPlayerBlurValue: (value: number) => void
+  // Scrobble actions
+  checkScrobbleConditions: () => boolean
+  sendScrobbleEvent: (songId: string, isSubmission: boolean) => Promise<void>
+  resetScrobbleState: () => void
+  setScrobbleState: (isScrobbled: boolean) => void
+  handleScrobbleOnSongChange: (previousSong?: ISong) => Promise<void>
+  handleScrobbleOnPause: () => Promise<void>
+  handleScrobbleOnResume: () => Promise<void>
 }
 
 export interface IPlayerContext {
   songlist: ISongList
   playerState: IPlayerState
   playerProgress: IPlayerProgress
+  scrobble: IScrobbleState
   settings: IPlayerSettings
   actions: IPlayerActions
 }

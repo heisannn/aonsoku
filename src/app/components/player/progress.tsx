@@ -9,7 +9,6 @@ import {
 } from 'react'
 import { ProgressSlider } from '@/app/components/ui/slider'
 import { podcasts } from '@/service/podcasts'
-import { subsonic } from '@/service/subsonic'
 import {
   usePlayerActions,
   usePlayerDuration,
@@ -35,11 +34,41 @@ export function PlayerProgress({ audioRef }: PlayerProgressProps) {
   const { currentSong, currentList, podcastList, currentSongIndex } =
     usePlayerSonglist()
   const { isSong, isPodcast } = usePlayerMediaType()
-  const { setProgress, setUpdatePodcastProgress, getCurrentPodcastProgress } =
-    usePlayerActions()
-  const isScrobbleSentRef = useRef(false)
+  const { 
+    setProgress, 
+    setUpdatePodcastProgress, 
+    getCurrentPodcastProgress,
+    handleScrobbleOnPause,
+    handleScrobbleOnResume,
+    handleScrobbleOnSongChange,
+  } = usePlayerActions()
 
   const isEmpty = isSong && currentList.length === 0
+  const previousSongRef = useRef(currentSong)
+  const wasPlayingRef = useRef(isPlaying)
+  
+  // Track song changes
+  useEffect(() => {
+    if (currentSong.id !== previousSongRef.current.id) {
+      const previousSong = previousSongRef.current.id ? previousSongRef.current : undefined
+      handleScrobbleOnSongChange(previousSong)
+      previousSongRef.current = currentSong
+    }
+  }, [currentSong, handleScrobbleOnSongChange])
+
+  // Track play/pause changes
+  useEffect(() => {
+    if (wasPlayingRef.current !== isPlaying) {
+      if (isPlaying) {
+        // Song was resumed
+        handleScrobbleOnResume()
+      } else {
+        // Song was paused
+        handleScrobbleOnPause()
+      }
+      wasPlayingRef.current = isPlaying
+    }
+  }, [isPlaying, handleScrobbleOnPause, handleScrobbleOnResume])
 
   const updateAudioCurrentTime = useCallback(
     (value: number) => {
@@ -76,44 +105,6 @@ export function PlayerProgress({ audioRef }: PlayerProgressProps) {
     () => convertSecondsToTime(currentDuration ?? 0),
     [currentDuration],
   )
-
-  const sendScrobble = useCallback(async (songId: string) => {
-    await subsonic.scrobble.send(songId)
-  }, [])
-
-  const progressTicks = useRef(0)
-
-  useEffect(() => {
-    if (isSeeking || !isPlaying) {
-      return
-    }
-    if (isSong) {
-      const progressPercentage = (progress / currentDuration) * 100
-
-      if (progressPercentage === 0) {
-        isScrobbleSentRef.current = false
-        progressTicks.current = 0
-      } else {
-        progressTicks.current += 1
-
-        if (
-          (progressTicks.current >= currentDuration / 2 ||
-            progressTicks.current >= 60 * 4) &&
-          !isScrobbleSentRef.current
-        ) {
-          sendScrobble(currentSong.id)
-          isScrobbleSentRef.current = true
-        }
-      }
-    }
-  }, [
-    progress,
-    currentDuration,
-    isSong,
-    sendScrobble,
-    currentSong.id,
-    isPlaying,
-  ])
 
   // Used to save listening progress to backend every 30 seconds
   useEffect(() => {
