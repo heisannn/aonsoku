@@ -53,6 +53,11 @@ export const usePlayerStore = createWithEqualityFn<IPlayerContext>()(
           playerProgress: {
             progress: 0,
           },
+          scrobble: {
+            isCurrentSongScrobbled: false,
+            scrobblePercentage: 0.5, // 50%
+            scrobbleDuration: 240, // 4 minutes
+          },
           settings: {
             privacy: {
               lrcLibEnabled: true,
@@ -396,14 +401,42 @@ export const usePlayerStore = createWithEqualityFn<IPlayerContext>()(
               }
             },
             setPlayingState: (status) => {
-              set((state) => {
-                state.playerState.isPlaying = status
-              })
+              const { isPlaying } = get().playerState
+              const { handleScrobbleOnPause, handleScrobbleOnResume } =
+                get().actions
+
+              if (isPlaying !== status) {
+                set((state) => {
+                  state.playerState.isPlaying = status
+                })
+
+                // Trigger scrobble logic based on state change
+                if (status) {
+                  handleScrobbleOnResume()
+                } else {
+                  handleScrobbleOnPause()
+                }
+              } else {
+                set((state) => {
+                  state.playerState.isPlaying = status
+                })
+              }
             },
             togglePlayPause: () => {
+              const { isPlaying } = get().playerState
+              const { handleScrobbleOnPause, handleScrobbleOnResume } =
+                get().actions
+
               set((state) => {
                 state.playerState.isPlaying = !state.playerState.isPlaying
               })
+
+              // Trigger scrobble logic based on new state
+              if (isPlaying) {
+                handleScrobbleOnPause()
+              } else {
+                handleScrobbleOnResume()
+              }
             },
             toggleLoop: () => {
               const { loopState } = get().playerState
@@ -452,28 +485,46 @@ export const usePlayerStore = createWithEqualityFn<IPlayerContext>()(
             },
             playNextSong: () => {
               const { loopState } = get().playerState
-              const { hasNextSong, resetProgress, playFirstSongInQueue } =
-                get().actions
+              const {
+                hasNextSong,
+                resetProgress,
+                playFirstSongInQueue,
+                handleScrobbleOnSongChange,
+              } = get().actions
+              const { currentSong } = get().songlist
 
               if (hasNextSong()) {
+                const previousSong = currentSong
                 resetProgress()
                 set((state) => {
                   state.songlist.currentSongIndex += 1
                 })
+                // Trigger scrobble logic after song change
+                handleScrobbleOnSongChange(previousSong)
               } else if (loopState === LoopState.All) {
+                const previousSong = currentSong
                 resetProgress()
                 playFirstSongInQueue()
+                // Trigger scrobble logic after song change
+                handleScrobbleOnSongChange(previousSong)
               }
             },
             playPrevSong: () => {
               if (get().actions.hasPrevSong()) {
-                get().actions.resetProgress()
+                const { currentSong } = get().songlist
+                const { resetProgress, handleScrobbleOnSongChange } =
+                  get().actions
+                const previousSong = currentSong
+                resetProgress()
                 set((state) => {
                   state.songlist.currentSongIndex -= 1
                 })
+                // Trigger scrobble logic after song change
+                handleScrobbleOnSongChange(previousSong)
               }
             },
             clearPlayerState: () => {
+              const { resetScrobbleState } = get().actions
               set((state) => {
                 state.songlist.originalList = []
                 state.songlist.shuffledList = []
@@ -495,11 +546,14 @@ export const usePlayerStore = createWithEqualityFn<IPlayerContext>()(
                 state.playerState.audioPlayerRef = null
                 state.settings.colors.currentSongColor = null
               })
+              resetScrobbleState()
             },
             resetProgress: () => {
+              const { resetScrobbleState } = get().actions
               set((state) => {
                 state.playerProgress.progress = 0
               })
+              resetScrobbleState()
             },
             setProgress: (progress) => {
               set((state) => {
@@ -769,16 +823,21 @@ export const usePlayerStore = createWithEqualityFn<IPlayerContext>()(
             },
             handleSongEnded: () => {
               const { loopState } = get().playerState
+              const { currentSong } = get().songlist
               const {
                 hasNextSong,
                 playNextSong,
                 setPlayingState,
                 clearPlayerState,
+                handleScrobbleOnSongChange,
               } = get().actions
 
               if (hasNextSong() || loopState === LoopState.All) {
+                const previousSong = currentSong
                 playNextSong()
                 setPlayingState(true)
+                // Trigger scrobble logic after song change
+                handleScrobbleOnSongChange(previousSong)
               } else {
                 clearPlayerState()
                 setPlayingState(false)
@@ -794,6 +853,114 @@ export const usePlayerStore = createWithEqualityFn<IPlayerContext>()(
                 state.playerState.hasPrev = hasPrevSong()
                 state.playerState.hasNext = hasNextSong()
               })
+            },
+            // Scrobble actions
+            checkScrobbleConditions: () => {
+              const { progress } = get().playerProgress
+              const { currentDuration } = get().playerState
+              const { scrobblePercentage, scrobbleDuration } = get().scrobble
+
+              if (currentDuration === 0) return false
+
+              const progressPercentage = progress / currentDuration
+              const progressTime = progress
+
+              return (
+                progressPercentage >= scrobblePercentage ||
+                progressTime >= scrobbleDuration
+              )
+            },
+            sendScrobbleEvent: async (
+              songId: string,
+              isSubmission: boolean,
+            ) => {
+              try {
+                await subsonic.scrobble.send(songId, isSubmission)
+              } catch (error) {
+                console.error('Error sending scrobble:', error)
+              }
+            },
+            resetScrobbleState: () => {
+              set((state) => {
+                state.scrobble.isCurrentSongScrobbled = false
+              })
+            },
+            setScrobbleState: (isScrobbled: boolean) => {
+              set((state) => {
+                state.scrobble.isCurrentSongScrobbled = isScrobbled
+              })
+            },
+            handleScrobbleOnSongChange: async (previousSong?: ISong) => {
+              const { currentSong } = get().songlist
+              const { mediaType } = get().playerState
+              const {
+                checkScrobbleConditions,
+                sendScrobbleEvent,
+                resetScrobbleState,
+              } = get().actions
+              const { isCurrentSongScrobbled } = get().scrobble
+
+              // Only process songs, not radio or podcast
+              if (mediaType !== 'song') return
+
+              // Send submission scrobble for previous song if conditions are met
+              if (
+                previousSong &&
+                checkScrobbleConditions() &&
+                !isCurrentSongScrobbled
+              ) {
+                await sendScrobbleEvent(previousSong.id, true)
+              }
+
+              // Send playing scrobble for current song
+              if (currentSong?.id) {
+                await sendScrobbleEvent(currentSong.id, false)
+              }
+
+              // Reset scrobble state for new song
+              resetScrobbleState()
+            },
+            handleScrobbleOnPause: async () => {
+              const { currentSong } = get().songlist
+              const { mediaType } = get().playerState
+              const {
+                checkScrobbleConditions,
+                sendScrobbleEvent,
+                setScrobbleState,
+              } = get().actions
+              const { isCurrentSongScrobbled } = get().scrobble
+
+              // Only process songs, not radio or podcast
+              if (mediaType !== 'song' || !currentSong?.id) return
+
+              // Send submission scrobble if conditions are met and not already scrobbled
+              if (checkScrobbleConditions() && !isCurrentSongScrobbled) {
+                await sendScrobbleEvent(currentSong.id, true)
+                setScrobbleState(true)
+              }
+            },
+            handleScrobbleOnResume: async () => {
+              const { currentSong } = get().songlist
+              const { mediaType } = get().playerState
+              const {
+                checkScrobbleConditions,
+                sendScrobbleEvent,
+                setScrobbleState,
+                resetScrobbleState,
+              } = get().actions
+              const { isCurrentSongScrobbled } = get().scrobble
+
+              // Only process songs, not radio or podcast
+              if (mediaType !== 'song' || !currentSong?.id) return
+
+              // Send submission scrobble if conditions are met and not already scrobbled
+              if (checkScrobbleConditions() && !isCurrentSongScrobbled) {
+                await sendScrobbleEvent(currentSong.id, true)
+                setScrobbleState(true)
+              }
+
+              // Reset scrobble state for consistency
+              resetScrobbleState()
             },
             resetConfig: () => {
               set((state) => {
